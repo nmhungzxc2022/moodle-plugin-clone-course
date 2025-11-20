@@ -1,0 +1,8 @@
+POST http://192.168.169.128/webservice/rest/server.php?wstoken=4a88bbb09e3b7720eb7e885498020fd8&wsfunction=local_pluginname_clone_course&moodlewsrestformat=json
+Content-Type: application/x-www-form-urlencoded
+
+shortname_clone=Kế Toán
+&fullname=Khóa học Kế Toán
+&shortname=Ke_Toan_K2
+&startdate=1700000000
+&enddate=1720000000
