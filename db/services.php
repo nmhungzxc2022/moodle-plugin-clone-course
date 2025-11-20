@@ -11,4 +11,14 @@ $functions = [
         'ajax' => true,
         'services' => ['Myservice'],  //cho pheps goij qua REST
     ],
+
+    // --- THÊM ĐOẠN NÀY VÀO ---
+    'local_pluginname_create_user' => [
+        'classname'   => 'local_pluginname\external\create_user',
+        'methodname'  => 'execute',
+        'description' => 'create a new user',
+        'type'        => 'write',
+        'ajax'        => true,
+        'services'    => ['Myservice'],
+    ],
 ];

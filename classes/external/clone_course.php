@@ -4,135 +4,119 @@ namespace local_pluginname\external;
 
 defined('MOODLE_INTERNAL') || die();
 
-// ← THÊM CÁC DÒNG NÀY
+global $CFG;
+require_once($CFG->dirroot . '/course/lib.php');
+// Nạp thư viện Backup & Restore (Quan trọng)
 require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
 require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
-require_once($CFG->dirroot . '/course/lib.php');
 
 use external_api;
 use external_function_parameters;
 use external_single_structure;
 use external_value;
-use course_summary_exporter;
-use context_course;
+use context_system;
 use stdClass;
 
 class clone_course extends external_api
 {
-    //dinh nghia tham so dau vao
-    public static function execute_parameters(): external_function_parameters
+
+    // 1. Khai báo tham số đầu vào (Input)
+    public static function execute_parameters()
     {
-        return new external_function_parameters([
-            'shortname_clone' => new external_value(PARAM_RAW, 'Shortname of course to clone'),
-            'fullname' => new external_value(PARAM_TEXT, 'Fullname of new course'),
-            'shortname' => new external_value(PARAM_TEXT, 'Shortname of new course'),
-            'startdate' => new external_value(PARAM_INT, 'Start date timestamp'),
-            'enddate' => new external_value(PARAM_INT, 'End date timestamp'),
-        ]);
+        return new external_function_parameters(
+            array(
+                'shortname_clone' => new external_value(PARAM_TEXT, 'Shortname của khóa học gốc'),
+                'fullname'        => new external_value(PARAM_TEXT, 'Fullname khóa học mới'),
+                'shortname'       => new external_value(PARAM_TEXT, 'Shortname khóa học mới'),
+                'startdate'       => new external_value(PARAM_INT, 'Ngày bắt đầu (timestamp)'),
+                'enddate'         => new external_value(PARAM_INT, 'Ngày kết thúc (timestamp)', VALUE_DEFAULT, 0)
+            )
+        );
     }
 
-    //logic clone course
+    // 2. Hàm xử lý chính
     public static function execute($shortname_clone, $fullname, $shortname, $startdate, $enddate)
     {
-        global $DB, $CFG;
-        //validate parameters (xacs thuwcs cac tham so)
-        $params = self::validate_parameters(self::execute_parameters(), [
+        global $DB, $USER, $CFG;
+
+        // Validate tham số
+        $params = self::validate_parameters(self::execute_parameters(), array(
             'shortname_clone' => $shortname_clone,
             'fullname' => $fullname,
             'shortname' => $shortname,
             'startdate' => $startdate,
             'enddate' => $enddate
-        ]);
+        ));
 
-        //check course source
-        $source = $DB->get_record('course', ['shortname' => $shortname_clone], '*', MUST_EXIST);
-        /*if (!$source) {
-            return [
-                'status' => false,
-                'id' => 0,
-                'message' => "source course '$shortname_clone' not found"
-            ];
-        }*/
+        require_capability('moodle/course:create', context_system::instance());
 
-        //create new course record
-        $newcourse = new stdClass;
-        $newcourse->fullname = $fullname;
-        $newcourse->shortname = $shortname;
-        $newcourse->category = $source->category; //same category
-        $newcourse->startdate = $startdate;
-        $newcourse->enddate = $enddate;
-
-        // Các thiết lập mặc định bắt buộc khác để tránh lỗi DB
-        $newcourse->visible = 1;
-        $newcourse->format = $source->format;
-
-        require_capability('moodle/course:create', \context_system::instance());
-
-        // Hàm này cần require_once('/course/lib.php') ở trên cùng
-        $created_course = create_course($newcourse);
-        $newcourseid = $created_course->id;
-
-        //$newcourseid = create_course($newcourse)->id;
-        /*// Kiểm tra quyền
-        $context = \context_system::instance();
-        if (!has_capability('moodle/course:create', $context)) {
-            return [
-                'status' => false,
-                'id' => 0,
-                'message' => 'You do not have permission to create courses'
-            ];
-        }
+        $result = array(
+            'status' => false,
+            'id' => 0,
+            'message' => ''
+        );
 
         try {
-            $newcourseid = create_course($newcourse)->id;
+            // A. Tìm khóa học gốc
+            $sourcecourse = $DB->get_record('course', array('shortname' => $params['shortname_clone']), '*', MUST_EXIST);
+
+            // B. Tạo vỏ khóa học mới trước
+            $newcourse_data = new stdClass();
+            $newcourse_data->fullname = $params['fullname'];
+            $newcourse_data->shortname = $params['shortname'];
+            $newcourse_data->category = $sourcecourse->category; // Cùng danh mục
+            $newcourse_data->startdate = $params['startdate'];
+            $newcourse_data->enddate = $params['enddate'];
+            $newcourse_data->visible = 1;
+
+            $newcourse = create_course($newcourse_data);
+
+            // C. Thực hiện Backup khóa cũ (Vào vùng tạm)
+            $bc = new \backup_controller(
+                \backup::TYPE_1COURSE,
+                $sourcecourse->id,
+                \backup::FORMAT_MOODLE,
+                \backup::INTERACTIVE_NO,
+                \backup::MODE_IMPORT,
+                $USER->id
+            );
+            $backupid = $bc->get_backupid();
+            $bc->execute_plan();
+            $bc->destroy();
+
+            // D. Thực hiện Restore vào khóa mới (Đổ nội dung vào vỏ)
+            $rc = new \restore_controller(
+                $backupid,
+                $newcourse->id,
+                \backup::INTERACTIVE_NO,
+                \backup::MODE_IMPORT,
+                $USER->id,
+                \backup::TARGET_EXISTING_ADDING
+            );
+            $rc->execute_precheck();
+            $rc->execute_plan();
+            $rc->destroy();
+
+            // Trả về kết quả
+            $result['status'] = true;
+            $result['id'] = $newcourse->id;
+            $result['message'] = 'Đã copy toàn bộ nội dung sang khóa mới!';
         } catch (\Exception $e) {
-            return [
-                'status' => false,
-                'id' => 0,
-                'message' => 'Error creating course: ' . $e->getMessage()
-            ];
-        }*/
+            $result['message'] = 'Lỗi: ' . $e->getMessage();
+        }
 
-        //copy course content
-        $backupcontroller = new \backup_controller(
-            \backup::TYPE_1COURSE,
-            $source->id,
-            \backup::FORMAT_MOODLE,
-            \backup::INTERACTIVE_NO,
-            \backup::MODE_IMPORT,
-            2
-        );
-
-        $backupid = $backupcontroller->get_backupid();
-        $backupbasepath = $backupcontroller->get_plan()->get_basepath();
-        $backupcontroller->execute_plan();
-
-        $restorecontroller = new \restore_controller(
-            $backupid,
-            $newcourseid,
-            \backup::INTERACTIVE_NO,
-            \backup::MODE_IMPORT,
-            2,
-            \backup::TARGET_EXISTING_ADDING
-        );
-
-        $restorecontroller->execute_precheck();
-        $restorecontroller->execute_plan();
-
-        return [
-            'status' => true,
-            'id' => $newcourseid,
-            'message' => "Course cloned successfully!"
-        ];
+        return $result;
     }
 
-    //dinh nghia dau ra
-    public static function execute_returns(): external_single_structure
+    // 3. Khai báo đầu ra (Output)
+    public static function execute_returns()
     {
-        return new external_single_structure([
-            'status' => new external_value(PARAM_BOOL, 'True/False'),
-            'id' => new external_value(PARAM_INT, 'New course ID'),
-            'message' => new external_value(PARAM_TEXT, 'Success or error message')
-        ]);
+        return new external_single_structure(
+            array(
+                'status'  => new external_value(PARAM_BOOL, 'Trạng thái'),
+                'id'      => new external_value(PARAM_INT, 'ID khóa học mới'),
+                'message' => new external_value(PARAM_TEXT, 'Thông báo')
+            )
+        );
     }
 }

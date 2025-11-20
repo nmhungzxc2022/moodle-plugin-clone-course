@@ -2,7 +2,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version = 2025111915;
+$plugin->version = 2025111916;
 $plugin->requires = 2020110911;
 // $plugin->supported = [];   // Available as of Moodle 3.9.0 or later.
 // $plugin->incompatible = [];   // Available as of Moodle 3.9.0 or later.

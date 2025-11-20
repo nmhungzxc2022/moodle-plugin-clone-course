@@ -2,7 +2,18 @@ POST http://192.168.169.128/webservice/rest/server.php?wstoken=4a88bbb09e3b7720e
 Content-Type: application/x-www-form-urlencoded
 
 shortname_clone=Kế Toán
-&fullname=Khóa học Kế Toán
-&shortname=Ke_Toan_K2
-&startdate=1700000000
-&enddate=1720000000
+&fullname=Khóa học Kế Toán copy222
+&shortname=Khoa_Kế_Toán_copyy222
+&startdate=1750000000
+&enddate=1763716000
+
+### TEST TẠO NGƯỜI DÙNG (Dùng Token cũ vẫn được nhé)
+POST http://192.168.169.128/webservice/rest/server.php?wstoken=4a88bbb09e3b7720eb7e885498020fd8&wsfunction=local_pluginname_create_user&moodlewsrestformat=json
+Content-Type: application/x-www-form-urlencoded
+
+username=nguyenhoanhao
+&firstname=Hảo
+&lastname=Nguyễn Hoàn
+&email=nguyenhoanhao@example.com
+&createdpassword=1
+&password=123456
